@@ -1,0 +1,1 @@
+﻿public record struct FileIdentityKey(ulong NTFSFileID, uint VolumeSerialNumber);
