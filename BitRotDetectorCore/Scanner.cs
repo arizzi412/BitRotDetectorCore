@@ -7,7 +7,6 @@ namespace BitRotDetectorCore
     {
         public static void Scan(VolumePath volumeRootPath, bool VerifyFileIntegrity)
         {
-
             FilePath dbPath = Path.Combine(volumeRootPath.ToString(), @"CheckSumDB.DB");
 
             FileDbContext dbContext = GetDbContext(volumeRootPath.ToString());
@@ -29,7 +28,7 @@ namespace BitRotDetectorCore
             dbMetadata.LastScanCompleted = false;
             dbContext.SaveChanges();
 
-            HashSet<ulong> currentNTFSFilesId = new();
+            HashSet<ulong> currentNTFSFilesId = [];
 
             foreach (var path in allPaths)
             {
@@ -106,24 +105,17 @@ namespace BitRotDetectorCore
         {
             string currentHash = FileHasher.ComputeFileHash(fileInfo.FullName);
 
-            if (
-                (fileRecord.LastWriteTime == fileInfo.LastWriteTimeUtc || fileRecord.Size != fileInfo.Length)
-                && currentHash != fileRecord.Hash
-                )
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+            bool metadataMatches = fileRecord.LastWriteTime == fileInfo.LastWriteTimeUtc;
+            bool hashMismatches = currentHash != fileRecord.Hash;
+
+            return metadataMatches && hashMismatches;
         }
 
         private static void CreateNewFileRecordAndAddToDB(FileInfo fileInfo, FileIdentityKey fileIdentityKey, FileDbContext dbContext, DbCache dbCache)
         {
             FileRecord fileRecord = new()
             {
-                Hash = FileHasher.ComputeFileHash(fileInfo.Name),
+                Hash = FileHasher.ComputeFileHash(fileInfo.FullName),
                 Path = fileInfo.FullName,
                 Size = fileInfo.Length,
                 FailedIntegrityScan = false,

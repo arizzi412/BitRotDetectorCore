@@ -48,8 +48,6 @@ public class DbCache
 
         var distinct = identityKeyToFileRecordKVPs.DistinctBy(x => x.Key.NTFSFileID).ToList();
 
-        var except = identityKeyToFileRecordKVPs.Except(distinct).ToList();
-
         return new ConcurrentDictionary<FileIdentityKey, FileRecord>(identityKeyToFileRecordKVPs);
     }
 }
