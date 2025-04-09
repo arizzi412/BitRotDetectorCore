@@ -1,8 +1,8 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace ReFS_Manager_Core;
+namespace BitRotDetectorCore;
 
-public sealed partial class VolumePath
+public sealed partial class VolumeRootPath
 {
     /// <summary>
     /// Gets the volume path (e.g., "K:\").
@@ -10,13 +10,14 @@ public sealed partial class VolumePath
     public string Path { get; }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="VolumePath"/> class.
+    /// Initializes a new instance of the <see cref="VolumeRootPath"/> class.
     /// Validates the input to ensure it is in the form of a drive letter followed by ":\"
     /// and optionally checks that the drive exists.
     /// </summary>
     /// <param name="volumePath">The volume path.</param>
     /// <exception cref="ArgumentException">Thrown when the volume path is invalid.</exception>
-    public VolumePath(string volumePath)
+    /// 
+    public static VolumeRootPath CreateVerifiedVolumeRootPath(string volumePath)
     {
         if (string.IsNullOrWhiteSpace(volumePath))
         {
@@ -36,6 +37,11 @@ public sealed partial class VolumePath
             throw new ArgumentException("Specified volume does not exist on this system.", nameof(volumePath));
         }
 
+        return new VolumeRootPath(volumePath);
+    }
+
+    private VolumeRootPath(string volumePath)
+    {
         Path = volumePath;
     }
 

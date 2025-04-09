@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using System.IO;
 
+namespace BitRotDetectorCore.FileUtils;
 
 public static class FileHasher
 {

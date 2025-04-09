@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35919.96 d17.13
+VisualStudioVersion = 17.13.35919.96
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitRotDetectorCore", "BitRotDetectorCore\BitRotDetectorCore.csproj", "{7C0896CB-C5B3-4500-815B-90DC21B1B640}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleInterface", "ConsoleInterface\ConsoleInterface.csproj", "{B433AEEF-0C92-4584-B30B-0329121EEFB8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{7C0896CB-C5B3-4500-815B-90DC21B1B640}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7C0896CB-C5B3-4500-815B-90DC21B1B640}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7C0896CB-C5B3-4500-815B-90DC21B1B640}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B433AEEF-0C92-4584-B30B-0329121EEFB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B433AEEF-0C92-4584-B30B-0329121EEFB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B433AEEF-0C92-4584-B30B-0329121EEFB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B433AEEF-0C92-4584-B30B-0329121EEFB8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

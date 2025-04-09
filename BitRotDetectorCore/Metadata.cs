@@ -1,4 +1,5 @@
-﻿
+﻿namespace BitRotDetectorCore;
+
 public class Metadata
 {
     public int Id { get; set; }

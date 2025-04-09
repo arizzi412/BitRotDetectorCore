@@ -26,10 +26,9 @@ public class DbCache
         IdentityKeyToFileRecord = new ConcurrentDictionary<FileIdentityKey, FileRecord>();
     }
 
-    public FileRecord? TryFindRecordByFileIdentity(FileIdentityKey fileIdentityKey)
+    public bool TryFindRecordByFileIdentity(FileIdentityKey fileIdentityKey, out FileRecord? fileRecord)
     {
-        IdentityKeyToFileRecord.TryGetValue(fileIdentityKey, out var fileRecord);
-        return fileRecord;
+        return IdentityKeyToFileRecord.TryGetValue(fileIdentityKey, out fileRecord);
     }
 
 
