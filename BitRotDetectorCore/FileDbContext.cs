@@ -25,7 +25,7 @@ public class FileDbContext(string dbName) : DbContext
 
             entity.Property(e => e.Path)
                     .HasConversion(
-                            path => path.NormalizedPath, // Path object -> string (for DB)
+                            path => path.ToString(), // Path object -> string (for DB)
                             value => new FilePath(value)     // string (from DB) -> Path object
       )
       .IsRequired(); // Ensure the path is not null

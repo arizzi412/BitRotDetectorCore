@@ -1,6 +1,5 @@
 ﻿using BitRotDetectorCore.FileUtils;
 using System.Diagnostics;
-using System.IO;
 
 namespace BitRotDetectorCore;
 
@@ -18,7 +17,8 @@ public static class Scanner
         var allPaths = Directory.EnumerateFiles(volumeRootPath.ToString(), "*", new EnumerationOptions
         {
             IgnoreInaccessible = true,
-            RecurseSubdirectories = true
+            RecurseSubdirectories = true,
+
         }).Select(FilePath.CreateNormalizedFilePath).ToArray();
 
         int totalFiles = allPaths.Length;
@@ -86,7 +86,7 @@ public static class Scanner
 
     private static void RemoveFilesThatDontExisAnymore(FileDbContext dbContext, HashSet<ulong> currentNTFSFilesId)
     {
-        var filesThatDontExistAnymore = dbContext.FileRecords.Where(fileRecord => currentNTFSFilesId.Contains(fileRecord.NTFSFileID)).ToList();
+        var filesThatDontExistAnymore = dbContext.FileRecords.Where(fileRecord => !currentNTFSFilesId.Contains(fileRecord.NTFSFileID)).ToList();
         dbContext.RemoveRange(filesThatDontExistAnymore);
         dbContext.SaveChanges();
     }
@@ -102,10 +102,13 @@ public static class Scanner
         var fileInfo = new FileInfo(filePath);
         var fileIdentityKey = FileIdentifier.GetFileIdentityKey(filePath);
         bool differencesFound = false;
+        var lastWriteTimeChanged = false;
+        var pathDiffers = false;
+
 
         if (!fileInfo.Exists) return;
 
-         var isExistingRecord = dbCache.TryFindRecordByFileIdentity(fileIdentityKey, out FileRecord? fileRecord);
+        var isExistingRecord = dbCache.TryFindRecordByFileIdentity(fileIdentityKey, out FileRecord? fileRecord);
 
         // file record not found in db
         if (!isExistingRecord)
@@ -115,23 +118,47 @@ public static class Scanner
         // file record found
         else
         {
-            differencesFound = UpdateFileRecordIfDifferencesFound(fileInfo, fileRecord);
+            lastWriteTimeChanged = fileRecord.LastWriteTime != fileInfo.LastWriteTimeUtc;
 
-            if (verifyFileHashes)
+
+            if (lastWriteTimeChanged) 
+                UpdateLastWriteTimeAndHash(fileInfo, fileRecord);
+
+            pathDiffers = fileRecord.Path != new FilePath(fileInfo.FullName);
+
+            if (pathDiffers) 
+                fileRecord.Path = fileInfo.FullName;
+
+
+            differencesFound = lastWriteTimeChanged || pathDiffers;
+        }
+
+        if (verifyFileHashes && !lastWriteTimeChanged)
+        {
+            var isFileCorrupt = VerifyFileIntegrity(fileInfo, fileRecord);
+            if (isFileCorrupt)
             {
-                var isFileCorrupt = VerifyFileIntegrity(fileInfo, fileRecord);
-                if (isFileCorrupt)
-                {
-                    fileRecord.FailedIntegrityScan = true;
-                }
+                fileRecord.FailedIntegrityScan = true;
             }
         }
+
         if (isExistingRecord && differencesFound)
         {
             dbContext.FileRecords.Update(fileRecord);
         }
 
         currentFiles.Add(fileIdentityKey.NTFSFileID);
+    }
+
+    private static void UpdateLastWriteTimeAndHash(FileInfo fileInfo, FileRecord? fileRecord)
+    {
+        fileRecord.Size = fileInfo.Length;
+        string newHash = FileHasher.ComputeFileHash(fileInfo.FullName);
+        if (fileRecord.Hash != newHash)
+        {
+            fileRecord.Hash = newHash;
+        }
+        fileRecord.LastWriteTime = fileInfo.LastWriteTimeUtc;
     }
 
     /// <summary>
@@ -177,7 +204,6 @@ public static class Scanner
     private static bool UpdateFileRecordIfDifferencesFound(FileInfo fileInfo, FileRecord fileRecord)
     {
         var lastWriteTimesDiffer = fileRecord.LastWriteTime != fileInfo.LastWriteTimeUtc;
-        var pathDiffers = fileRecord.Path != fileInfo.FullName;
 
         if (lastWriteTimesDiffer)
         {
@@ -190,6 +216,8 @@ public static class Scanner
             fileRecord.LastWriteTime = fileInfo.LastWriteTimeUtc;
         }
 
+        var pathDiffers = fileRecord.Path != new FilePath(fileInfo.FullName);
+
         if (pathDiffers)
         {
             fileRecord.Path = fileInfo.FullName;
@@ -201,7 +229,7 @@ public static class Scanner
     private static FileDbContext GetOrCreateDB(VolumeRootPath volumeRootPath)
     {
         var dbName = "FileIntegrity.db";
-        var dbFolderName = "bitRotScanner";
+        var dbFolderName = ".fileIntegrity";
 
         var dbFolderPath = Path.Combine(volumeRootPath.ToString(), dbFolderName);
 

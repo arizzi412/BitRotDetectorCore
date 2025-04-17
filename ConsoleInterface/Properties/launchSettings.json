@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ConsoleInterface": {
+      "commandName": "Project",
+      "workingDirectory": "H:\\"
+    }
+  }
+}

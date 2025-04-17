@@ -7,7 +7,7 @@ public sealed partial class VolumeRootPath
     /// <summary>
     /// Gets the volume path (e.g., "K:\").
     /// </summary>
-    public string Path { get; }
+    private string Path { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VolumeRootPath"/> class.
@@ -44,6 +44,8 @@ public sealed partial class VolumeRootPath
     {
         Path = volumePath;
     }
+
+    public static implicit operator string(VolumeRootPath a) => a.Path;
 
     public override string ToString() => Path;
 

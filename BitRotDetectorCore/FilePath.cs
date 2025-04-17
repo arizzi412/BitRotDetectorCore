@@ -1,7 +1,7 @@
 ﻿
 public class FilePath(string path)
 {
-    public string NormalizedPath { get; } = CreateNormalizedFilePath(path);
+    private string NormalizedPath { get; } = CreateNormalizedFilePath(path);
 
     public static string CreateNormalizedFilePath(string path) => path.Replace(Path.DirectorySeparatorChar, '/');
 
