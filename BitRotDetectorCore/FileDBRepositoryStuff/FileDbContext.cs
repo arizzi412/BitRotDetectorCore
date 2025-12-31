@@ -1,10 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
-namespace BitRotDetectorCore;
+namespace BitRotDetectorCore.FileDBRepositoryStuff;
 
 public class FileDbContext(string dbName) : DbContext
 {
-    public DbSet<FileRecord> FileRecords { get; set; } = null!;
+    public DbSet<DBFileRecord> FileRecords { get; set; } = null!;
 
     public DbSet<Metadata> Metadata { get; set; }
 
@@ -15,7 +15,7 @@ public class FileDbContext(string dbName) : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // FileRecord configuration
-        modelBuilder.Entity<FileRecord>(entity =>
+        modelBuilder.Entity<DBFileRecord>(entity =>
         {
             entity.HasKey(e => e.FileRecordId);
             entity.Property(e => e.FileRecordId)

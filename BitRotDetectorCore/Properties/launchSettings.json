@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "ConsoleInterface": {
+    "BitRotDetectorCore": {
       "commandName": "Project",
       "workingDirectory": "D:\\"
     }

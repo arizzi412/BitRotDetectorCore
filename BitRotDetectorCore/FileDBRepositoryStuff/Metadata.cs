@@ -1,4 +1,4 @@
-﻿namespace BitRotDetectorCore;
+﻿namespace BitRotDetectorCore.FileDBRepositoryStuff;
 
 public class Metadata
 {

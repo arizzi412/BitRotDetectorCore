@@ -1,4 +1,6 @@
-﻿using BitRotDetectorCore.FileUtils;
+﻿using BitRotDetectorCore.FileDBRepositoryStuff;
+using BitRotDetectorCore.FileUtils;
+using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
 
 namespace BitRotDetectorCore;
@@ -9,8 +11,7 @@ public static class Scanner
     {
         progress?.Report(new ScanProgressInfo { StatusMessage = "Loading database..." });
 
-        FileDbContext dbContext = GetOrCreateDB(volumeRootPath);
-        DbCache dbCache = DbCache.CreateCache(dbContext);
+        FileDbRepository dbRepository = new FileDbRepository(volumeRootPath);
 
         progress?.Report(new ScanProgressInfo { StatusMessage = "Enumerating files..." });
 
@@ -21,15 +22,17 @@ public static class Scanner
 
         }).Select(FilePath.CreateNormalizedFilePath).ToArray();
 
+        progress?.Report(new ScanProgressInfo { StatusMessage = "Retrieving File Ids..." });
+        var PathToIdentityKey = allPaths.ToDictionary(path => path, path => FileIdentifier.GetFileIdentityKey(path));
+        var currentFileIdentityKeys = PathToIdentityKey.Values.Select(x => x.NTFSFileID).ToHashSet();
+
         int totalFiles = allPaths.Length;
         int filesProcessed = 0;
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        var dbMetadata = dbContext.Metadata.First();
-        SetScanStartStatus(dbContext, dbMetadata);
+        dbRepository.SetScanStartStatus();
 
-        HashSet<ulong> currentNTFSFilesId = [];
 
         // Report starting scan
         progress?.Report(new ScanProgressInfo { TotalFiles = totalFiles, FilesProcessed = 0, StatusMessage = "Starting scan..." });
@@ -46,11 +49,13 @@ public static class Scanner
                     StatusMessage = $"Scanning: {Path.GetFileName(path.ToString())}"
                 });
 
-                ProcessFile(path, dbContext, dbCache, currentNTFSFilesId, VerifyFileIntegrity);
+                var fileIdentyKey = PathToIdentityKey[path];
+
+                ProcessFile(path, dbRepository, fileIdentyKey, VerifyFileIntegrity);
 
                 if (stopwatch.ElapsedMilliseconds > 300 * 1000)
                 {
-                    dbContext.SaveChanges();
+                    dbRepository.SaveChanges();
                     stopwatch.Restart();
                 }
             }
@@ -72,54 +77,32 @@ public static class Scanner
 
         }
 
-        SetScanCompletedStatus(dbContext, dbMetadata);
+        dbRepository.SetScanCompletedStatus();
+        
 
-        RemoveFilesThatDontExisAnymore(dbContext, currentNTFSFilesId);
+        var filesThatDontExistAnymore = dbRepository.dbContext.FileRecords.Where(fileRecord => !currentFileIdentityKeys.Contains(fileRecord.NTFSFileID)).ToList();
+        dbRepository.RemoveFiles(filesThatDontExistAnymore);
     }
 
-    private static void SetScanStartStatus(FileDbContext dbContext, Metadata dbMetadata)
-    {
-        dbMetadata.LastScanStartTime = DateTime.Now;
-        dbMetadata.LastScanCompleted = false;
-        dbContext.SaveChanges();
-    }
-
-    private static void RemoveFilesThatDontExisAnymore(FileDbContext dbContext, HashSet<ulong> currentNTFSFilesId)
-    {
-        var filesThatDontExistAnymore = dbContext.FileRecords.Where(fileRecord => !currentNTFSFilesId.Contains(fileRecord.NTFSFileID)).ToList();
-        dbContext.RemoveRange(filesThatDontExistAnymore);
-        dbContext.SaveChanges();
-    }
-
-    private static void SetScanCompletedStatus(FileDbContext dbContext, Metadata dbMetadata)
-    {
-        dbMetadata.LastScanCompleted = true;
-        dbContext.SaveChanges();
-    }
-
-    private static void ProcessFile(FilePath filePath, FileDbContext dbContext, DbCache dbCache, HashSet<ulong> currentFiles, bool verifyFileHashes)
+    private static void ProcessFile(FilePath filePath, FileDbRepository dbRepository, FileIdentityKey fileIdentityKey, bool verifyFileHashes)
     {
         var fileInfo = new FileInfo(filePath);
-        var fileIdentityKey = FileIdentifier.GetFileIdentityKey(filePath);
-        bool differencesFound = false;
         var lastWriteTimeChanged = false;
-        var pathDiffers = false;
+        bool pathDiffers;
 
 
         if (!fileInfo.Exists) return;
 
-        var isExistingRecord = dbCache.TryFindRecordByFileIdentity(fileIdentityKey, out FileRecord? fileRecord);
+        var fileRecord = dbRepository.TryFindFileRecord(fileIdentityKey);
+        var isInDB = fileRecord is not null;
 
-        // file record not found in db
-        if (!isExistingRecord)
+        if (!isInDB)
         {
-            CreateNewFileRecordAndAddToDB(fileInfo, fileIdentityKey, dbContext, dbCache);
+            dbRepository.CreateNewFileRecordAndAddToDB(fileInfo, fileIdentityKey);
         }
-        // file record found
         else
         {
-            lastWriteTimeChanged = fileRecord.LastWriteTime != fileInfo.LastWriteTimeUtc;
-
+            lastWriteTimeChanged = fileRecord!.LastWriteTime != fileInfo.LastWriteTimeUtc;
 
             if (lastWriteTimeChanged) 
                 UpdateLastWriteTimeAndHash(fileInfo, fileRecord);
@@ -129,28 +112,18 @@ public static class Scanner
             if (pathDiffers) 
                 fileRecord.Path = fileInfo.FullName;
 
-
-            differencesFound = lastWriteTimeChanged || pathDiffers;
-        }
-
-        if (verifyFileHashes && !lastWriteTimeChanged)
-        {
-            var isFileCorrupt = VerifyFileIntegrity(fileInfo, fileRecord);
-            if (isFileCorrupt)
+            if (verifyFileHashes && !lastWriteTimeChanged)
             {
-                fileRecord.FailedIntegrityScan = true;
+                var isFileCorrupt = VerifyFileIntegrity(fileInfo, fileRecord);
+                if (isFileCorrupt)
+                {
+                    fileRecord.FailedIntegrityScan = true;
+                }
             }
         }
-
-        if (isExistingRecord && differencesFound)
-        {
-            dbContext.FileRecords.Update(fileRecord);
-        }
-
-        currentFiles.Add(fileIdentityKey.NTFSFileID);
     }
 
-    private static void UpdateLastWriteTimeAndHash(FileInfo fileInfo, FileRecord? fileRecord)
+    private static void UpdateLastWriteTimeAndHash(FileInfo fileInfo, DBFileRecord fileRecord)
     {
         fileRecord.Size = fileInfo.Length;
         string newHash = FileHasher.ComputeFileHash(fileInfo.FullName);
@@ -168,7 +141,7 @@ public static class Scanner
     /// <param name="fileInfo"></param>
     /// <param name="fileRecord"></param>
     /// <returns></returns>
-    private static bool VerifyFileIntegrity(FileInfo fileInfo, FileRecord fileRecord)
+    private static bool VerifyFileIntegrity(FileInfo fileInfo, DBFileRecord fileRecord)
     {
         string currentHash = FileHasher.ComputeFileHash(fileInfo.FullName);
 
@@ -178,78 +151,4 @@ public static class Scanner
         return metadataMatches && hashMismatches;
     }
 
-    private static void CreateNewFileRecordAndAddToDB(FileInfo fileInfo, FileIdentityKey fileIdentityKey, FileDbContext dbContext, DbCache dbCache)
-    {
-        FileRecord fileRecord = new()
-        {
-            Hash = FileHasher.ComputeFileHash(fileInfo.FullName),
-            Path = fileInfo.FullName,
-            Size = fileInfo.Length,
-            FailedIntegrityScan = false,
-            LastWriteTime = fileInfo.LastWriteTimeUtc,
-            NTFSFileID = fileIdentityKey.NTFSFileID,
-            VolumeSerialNumber = fileIdentityKey.VolumeSerialNumber,
-        };
-
-        dbContext.FileRecords.Add(fileRecord);
-        dbCache.AddOrUpdate(fileIdentityKey, fileRecord);
-    }
-
-    /// <summary>
-    /// Updates file records if differences were found between recordId and actual file.  True means differences were found.  False means no differences found so doesn't track in EF.
-    /// </summary>
-    /// <param name="fileInfo"></param>
-    /// <param name="fileRecord"></param>
-    /// <returns></returns>
-    private static bool UpdateFileRecordIfDifferencesFound(FileInfo fileInfo, FileRecord fileRecord)
-    {
-        var lastWriteTimesDiffer = fileRecord.LastWriteTime != fileInfo.LastWriteTimeUtc;
-
-        if (lastWriteTimesDiffer)
-        {
-            fileRecord.Size = fileInfo.Length;
-            string newHash = FileHasher.ComputeFileHash(fileInfo.FullName);
-            if (fileRecord.Hash != newHash)
-            {
-                fileRecord.Hash = newHash;
-            }
-            fileRecord.LastWriteTime = fileInfo.LastWriteTimeUtc;
-        }
-
-        var pathDiffers = fileRecord.Path != new FilePath(fileInfo.FullName);
-
-        if (pathDiffers)
-        {
-            fileRecord.Path = fileInfo.FullName;
-        }
-
-        return lastWriteTimesDiffer || pathDiffers;
-    }
-
-    private static FileDbContext GetOrCreateDB(VolumeRootPath volumeRootPath)
-    {
-        var dbName = "FileIntegrity.db";
-        var dbFolderName = ".fileIntegrity";
-
-        var dbFolderPath = Path.Combine(volumeRootPath.ToString(), dbFolderName);
-
-        var dbFilePath = Path.Combine(dbFolderPath, dbName);
-
-        Directory.CreateDirectory(dbFolderPath);
-        HideFolder(dbFolderPath);
-
-        var dbContext = new FileDbContext(dbFilePath);
-        dbContext.Database.EnsureCreated();
-
-        return dbContext;
-    }
-
-    private static void HideFolder(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            DirectoryInfo di = Directory.CreateDirectory(path);
-            di.Attributes = FileAttributes.Directory | FileAttributes.Hidden;
-        }
-    }
 }
